@@ -10,6 +10,7 @@ import it.frafol.cleanping.bukkit.enums.SpigotConfig;
 import it.frafol.cleanping.bukkit.enums.SpigotMessages;
 import it.frafol.cleanping.bukkit.enums.SpigotVersion;
 import it.frafol.cleanping.bukkit.hooks.PlaceholderHook;
+import it.frafol.cleanping.bukkit.hooks.VanishBridge;
 import it.frafol.cleanping.bukkit.objects.Lag;
 import it.frafol.cleanping.bukkit.objects.Placeholder;
 import it.frafol.cleanping.bukkit.objects.TextFile;
@@ -151,6 +152,8 @@ public class CleanPing extends JavaPlugin {
 
 		Objects.requireNonNull(getCommand("ping")).setTabCompleter(new TabComplete());
 		Objects.requireNonNull(getCommand("cleanping")).setTabCompleter(new TabComplete());
+
+		new VanishBridge(this).register();
 
 		if (SpigotConfig.MONITOR.get(Boolean.class)) {
 			monitorPing();

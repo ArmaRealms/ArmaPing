@@ -1,6 +1,7 @@
 package it.frafol.cleanping.bukkit.commands.legacy;
 
 import it.frafol.cleanping.bukkit.CleanPing;
+import it.frafol.cleanping.bukkit.hooks.VanishBridge;
 import it.frafol.cleanping.bukkit.enums.SpigotConfig;
 import it.frafol.cleanping.bukkit.enums.SpigotMessages;
 import it.frafol.cleanping.bukkit.objects.Placeholder;
@@ -58,7 +59,8 @@ public class PingCommand implements CommandExecutor {
 				return false;
 			}
 
-			if (plugin.getServer().getPlayer(args[0]) == null) {
+			final Player target = plugin.getServer().getPlayer(args[0]);
+			if (!VanishBridge.isVisible(target)) {
 				source.sendMessage(SpigotMessages.NOT_ONLINE.color()
 						.replace("%prefix%", SpigotMessages.PREFIX.color())
 						.replace("%user%", (args[0])));
@@ -71,7 +73,7 @@ public class PingCommand implements CommandExecutor {
 				return false;
 			}
 
-			final long ping = plugin.getPing(plugin.getServer().getPlayer(args[0]));
+			final long ping = plugin.getPing(target);
 
 			if (!(SpigotConfig.DYNAMIC_PING.get(Boolean.class))) {
 				source.sendMessage(SpigotMessages.OTHERS_PING.color()
@@ -94,17 +96,19 @@ public class PingCommand implements CommandExecutor {
 				return false;
 			}
 
-			if (plugin.getServer().getPlayer(args[0]) == null) {
+			final Player target = plugin.getServer().getPlayer(args[0]);
+			if (!VanishBridge.isVisible(target)) {
 				source.sendMessage(SpigotMessages.NOT_ONLINE.color()
 						.replace("%prefix%", Placeholder.translate(SpigotMessages.PREFIX.color()))
 						.replace("%user%", (args[0])));
 				return false;
 			}
 
-			if (plugin.getServer().getPlayer(args[1]) == null) {
+			final Player secondTarget = plugin.getServer().getPlayer(args[1]);
+			if (!VanishBridge.isVisible(secondTarget)) {
 				source.sendMessage(SpigotMessages.NOT_ONLINE.color()
 						.replace("%prefix%", Placeholder.translate(SpigotMessages.PREFIX.get(String.class)))
-						.replace("%user%", (args[0])));
+						.replace("%user%", (args[1])));
 				return false;
 			}
 
@@ -114,8 +118,8 @@ public class PingCommand implements CommandExecutor {
 				return false;
 			}
 
-			final long ping1 = plugin.getPing(plugin.getServer().getPlayer(args[0]));
-			final long ping2 = plugin.getPing(plugin.getServer().getPlayer(args[1]));
+			final long ping1 = plugin.getPing(target);
+			final long ping2 = plugin.getPing(secondTarget);
 			final long difference = getDifference(ping1, ping2);
 
 			source.sendMessage(Placeholder.translate(SpigotMessages.PING_DIFFERENCE.color())

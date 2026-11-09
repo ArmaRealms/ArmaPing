@@ -18,6 +18,7 @@ import it.frafol.cleanping.velocity.enums.VelocityMessages;
 import it.frafol.cleanping.velocity.enums.VelocityRedis;
 import it.frafol.cleanping.velocity.enums.VelocityVersion;
 import it.frafol.cleanping.velocity.hooks.RedisListener;
+import it.frafol.cleanping.velocity.hooks.VanishState;
 import it.frafol.cleanping.velocity.objects.TextFile;
 import lombok.Getter;
 import lombok.SneakyThrows;
@@ -54,6 +55,7 @@ public class CleanPing {
 	private final Logger logger;
 	private final ProxyServer server;
 	private final Path path;
+	private final VanishState vanishState = new VanishState();
 	private final Metrics.Factory metricsFactory;
 
 	boolean isWindows = System.getProperty("os.name").startsWith("Windows");
@@ -133,6 +135,8 @@ public class CleanPing {
 		updateConfig();
 
 		logger.info("Loading commands...");
+		server.getChannelRegistrar().register(VanishState.CHANNEL);
+		server.getEventManager().register(this, vanishState);
 		PingCommand.register(server, this);
 		ReloadCommand.register(server, this);
 
@@ -148,8 +152,8 @@ public class CleanPing {
 		if (VelocityRedis.REDIS.get(Boolean.class) && server.getPluginManager().isLoaded("redisbungee")) {
 			final RedisBungeeAPI redisBungeeAPI = RedisBungeeAPI.getRedisBungeeApi();
 			server.getEventManager().register(this, new RedisListener(this));
-			redisBungeeAPI.registerPubSubChannels("CleanPing-Request");
-			redisBungeeAPI.registerPubSubChannels("CleanPing-Response");
+			redisBungeeAPI.registerPubSubChannels(RedisListener.REQUEST_CHANNEL);
+			redisBungeeAPI.registerPubSubChannels(RedisListener.RESPONSE_CHANNEL);
 			logger.info("Hooked into RedisBungee successfully!");
 		}
 

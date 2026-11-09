@@ -5,6 +5,8 @@ import com.mojang.brigadier.Command;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.builder.RequiredArgumentBuilder;
+import com.mojang.brigadier.suggestion.Suggestions;
+import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import com.mojang.brigadier.tree.LiteralCommandNode;
 import com.velocitypowered.api.command.BrigadierCommand;
 import com.velocitypowered.api.command.CommandMeta;
@@ -15,14 +17,19 @@ import it.frafol.cleanping.velocity.CleanPing;
 import it.frafol.cleanping.velocity.enums.VelocityConfig;
 import it.frafol.cleanping.velocity.enums.VelocityMessages;
 import it.frafol.cleanping.velocity.enums.VelocityRedis;
+import it.frafol.cleanping.velocity.hooks.RedisListener;
+import it.frafol.cleanping.velocity.hooks.VanishState;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 
+import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 public final class PingCommand  {
 
     public static void register(ProxyServer proxyServer, CleanPing plugin) {
+        VanishState vanishState = plugin.getVanishState();
         LiteralCommandNode<CommandSource> node = LiteralArgumentBuilder.<CommandSource>literal("cleanping")
                 .executes(ctx -> {
 
@@ -56,69 +63,34 @@ public final class PingCommand  {
                 })
                 .then(RequiredArgumentBuilder.<CommandSource, String>argument("player1", StringArgumentType.word())
                         .requires(src -> src.hasPermission(VelocityConfig.PING_OTHERS_PERMISSION.get(String.class)))
-                        .suggests((ctx, builder) -> {
-
-                            String partialName;
-
-                            try {
-                                partialName = ctx.getArgument("player1", String.class).toLowerCase();
-                            } catch (IllegalArgumentException ignored) {
-                                partialName = "";
-                            }
-
-                            if (partialName.isEmpty()) {
-
-                                proxyServer.getAllPlayers().stream()
-                                        .map(Player::getUsername)
-                                        .forEach(builder::suggest);
-                                return builder.buildFuture();
-
-                            }
-
-                            String finalPartialName = partialName;
-                            proxyServer.getAllPlayers().stream()
-                                    .map(Player::getUsername)
-                                    .filter(name -> name.toLowerCase().startsWith(finalPartialName))
-                                    .forEach(builder::suggest);
-
-                            return builder.buildFuture();
-
-                        })
+                        .suggests((ctx, builder) -> suggestPlayers(proxyServer, vanishState, builder))
                         .executes(ctx -> {
 
                             final String argument = StringArgumentType.getString(ctx, "player1");
 
-                            if (VelocityRedis.REDIS.get(Boolean.class) && proxyServer.getPluginManager().isLoaded("redisbungee")) {
-                                final RedisBungeeAPI redisBungeeAPI = RedisBungeeAPI.getRedisBungeeApi();
-
-                                final UUID uuid = redisBungeeAPI.getUuidFromName(argument);
-                                if (uuid == null) {
-                                    return -1;
-                                }
-
-                                if (!redisBungeeAPI.isPlayerOnline(uuid)) {
-                                    ctx.getSource().sendMessage(LegacyComponentSerializer.legacy('§')
-                                            .deserialize(VelocityMessages.NOT_ONLINE.color()
-                                                    .replace("%prefix%", VelocityMessages.PREFIX.color())
-                                                    .replace("%user%", argument)
-                                            ));
-
-                                    return Command.SINGLE_SUCCESS;
-                                }
-
-                                if (!(ctx.getSource() instanceof Player)) {
-                                    return Command.SINGLE_SUCCESS;
-                                }
-
-                                final Player player = (Player) ctx.getSource();
-                                final String send_message = argument + ";" + uuid + ";" + redisBungeeAPI.getProxy(uuid) + ";" + player.getUniqueId();
-                                redisBungeeAPI.sendChannelMessage("CleanPing-Request", send_message);
-                                return Command.SINGLE_SUCCESS;
+                            final Optional<Player> localTarget = proxyServer.getPlayer(argument);
+                            if (localTarget.isPresent() && !vanishState.isVisible(localTarget.get())) {
+                                return sendNotOnline(ctx.getSource(), argument);
                             }
 
-                            final Optional<Player> optionalTarget = proxyServer.getPlayer(argument);
-                            if (optionalTarget.isPresent()) {
-                                final Player target = optionalTarget.get();
+                            if (!localTarget.isPresent() && VelocityRedis.REDIS.get(Boolean.class)
+                                    && proxyServer.getPluginManager().isLoaded("redisbungee")
+                                    && ctx.getSource() instanceof Player) {
+                                final RedisBungeeAPI redis = RedisBungeeAPI.getRedisBungeeApi();
+                                final UUID uuid = redis.getUuidFromName(argument);
+                                if (uuid != null && redis.isPlayerOnline(uuid)) {
+                                    final String targetProxy = redis.getProxy(uuid);
+                                    if (targetProxy != null && !targetProxy.equals(redis.getProxyId())) {
+                                        final Player player = (Player) ctx.getSource();
+                                        redis.sendChannelMessage(RedisListener.REQUEST_CHANNEL,
+                                                argument + ";" + uuid + ";" + targetProxy + ";" + player.getUniqueId());
+                                        return Command.SINGLE_SUCCESS;
+                                    }
+                                }
+                            }
+
+                            if (localTarget.isPresent()) {
+                                final Player target = localTarget.get();
 
                                 if (!(VelocityConfig.OTHERS_PING_OPTION.get(Boolean.class))) {
                                     ctx.getSource().sendMessage(LegacyComponentSerializer.legacySection()
@@ -151,54 +123,21 @@ public final class PingCommand  {
                                                 .replace("%ping%", color + target.getPing())
                                         ));
                             } else {
-                                ctx.getSource().sendMessage(LegacyComponentSerializer.legacySection()
-                                        .deserialize(VelocityMessages.NOT_ONLINE.color()
-                                                .replace("%prefix%", VelocityMessages.PREFIX.color())
-                                                .replace("%user%", argument)
-                                        ));
-
-                                return -1;
+                                return sendNotOnline(ctx.getSource(), argument);
                             }
 
                             return Command.SINGLE_SUCCESS;
                         })
                         .then(RequiredArgumentBuilder.<CommandSource, String>argument("player2", StringArgumentType.word())
                                 .requires(src -> src.hasPermission(VelocityConfig.DIFFERENCE_PING_PERMISSION.get(String.class)))
-                                .suggests((ctx, builder) -> {
-
-                                    String partialName;
-
-                                    try {
-                                        partialName = ctx.getArgument("player2", String.class).toLowerCase();
-                                    } catch (IllegalArgumentException ignored) {
-                                        partialName = "";
-                                    }
-
-                                    if (partialName.isEmpty()) {
-
-                                        proxyServer.getAllPlayers().stream()
-                                                .map(Player::getUsername)
-                                                .forEach(builder::suggest);
-                                        return builder.buildFuture();
-
-                                    }
-
-                                    String finalPartialName = partialName;
-                                    proxyServer.getAllPlayers().stream()
-                                            .map(Player::getUsername)
-                                            .filter(name -> name.toLowerCase().startsWith(finalPartialName))
-                                            .forEach(builder::suggest);
-
-                                    return builder.buildFuture();
-
-                                })
+                                .suggests((ctx, builder) -> suggestPlayers(proxyServer, vanishState, builder))
                                 .executes(ctx -> {
 
                                     final String argument = StringArgumentType.getString(ctx, "player1");
                                     final String argument2 = StringArgumentType.getString(ctx, "player2");
 
-                                    final Optional<Player> optionalTarget = proxyServer.getPlayer(argument);
-                                    final Optional<Player> optionalTarget2 = proxyServer.getPlayer(argument2);
+                                    final Optional<Player> optionalTarget = proxyServer.getPlayer(argument).filter(vanishState::isVisible);
+                                    final Optional<Player> optionalTarget2 = proxyServer.getPlayer(argument2).filter(vanishState::isVisible);
 
                                     if (optionalTarget.isPresent() && optionalTarget2.isPresent()) {
 
@@ -228,12 +167,7 @@ public final class PingCommand  {
                                                 ));
 
                                     } else {
-                                        ctx.getSource().sendMessage(LegacyComponentSerializer.legacySection()
-                                                .deserialize(VelocityMessages.NOT_ONLINE.color()
-                                                        .replace("%prefix%", VelocityMessages.PREFIX.color())
-                                                        .replace("%user%", argument)
-                                                ));
-
+                                        return sendNotOnline(ctx.getSource(), optionalTarget.isPresent() ? argument2 : argument);
                                     }
 
                                     return Command.SINGLE_SUCCESS;
@@ -244,6 +178,24 @@ public final class PingCommand  {
                 .aliases("ping").plugin(plugin).build();
         proxyServer.getCommandManager().register(meta, command);
 	}
+
+    private static CompletableFuture<Suggestions> suggestPlayers(
+            ProxyServer proxyServer, VanishState vanishState, SuggestionsBuilder builder) {
+        proxyServer.getAllPlayers().stream()
+                .filter(vanishState::isVisible)
+                .map(Player::getUsername)
+                .filter(name -> name.toLowerCase(Locale.ROOT).startsWith(builder.getRemainingLowerCase()))
+                .forEach(builder::suggest);
+        return builder.buildFuture();
+    }
+
+    public static int sendNotOnline(CommandSource source, String username) {
+        source.sendMessage(LegacyComponentSerializer.legacySection()
+                .deserialize(VelocityMessages.NOT_ONLINE.color()
+                        .replace("%prefix%", VelocityMessages.PREFIX.color())
+                        .replace("%user%", username)));
+        return 0;
+    }
 
     private static String colorBasedOnPing(long ping) {
         if (ping < VelocityConfig.MEDIUM_MS.get(Integer.class)) {
