@@ -6,10 +6,25 @@
         <sourceOutputDir name="target/generated-sources/annotations" />
         <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
         <outputRelativeToContentRoot value="true" />
-        <module name="spigot" />
-        <module name="velocity" />
+      </profile>
+      <profile name="Annotation profile for cleanping" enabled="true">
+        <sourceOutputDir name="target/generated-sources/annotations" />
+        <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
+        <outputRelativeToContentRoot value="true" />
+        <processor name="lombok.launch.AnnotationProcessorHider$AnnotationProcessor" />
+        <processor name="lombok.launch.AnnotationProcessorHider$ClaimingProcessor" />
         <module name="bungeecord" />
+        <module name="spigot" />
         <module name="universal" />
+      </profile>
+      <profile name="Annotation profile for velocity" enabled="true">
+        <sourceOutputDir name="target/generated-sources/annotations" />
+        <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
+        <outputRelativeToContentRoot value="true" />
+        <processor name="lombok.launch.AnnotationProcessorHider$AnnotationProcessor" />
+        <processor name="lombok.launch.AnnotationProcessorHider$ClaimingProcessor" />
+        <processor name="com.velocitypowered.api.plugin.ap.PluginAnnotationProcessor" />
+        <module name="velocity" />
       </profile>
     </annotationProcessing>
   </component>
