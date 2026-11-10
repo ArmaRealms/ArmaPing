@@ -2,10 +2,10 @@ package it.frafol.cleanping.velocity.hooks;
 
 import com.imaginarycode.minecraft.redisbungee.RedisBungeeAPI;
 import com.imaginarycode.minecraft.redisbungee.events.PubSubMessageEvent;
-import com.velocitypowered.api.event.PostOrder;
 import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.proxy.Player;
 import it.frafol.cleanping.velocity.CleanPing;
+import it.frafol.cleanping.velocity.commands.PingCommand;
 import it.frafol.cleanping.velocity.enums.VelocityConfig;
 import it.frafol.cleanping.velocity.enums.VelocityMessages;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
@@ -15,6 +15,11 @@ import java.util.Optional;
 import java.util.UUID;
 
 public class RedisListener {
+
+    // Older proxies must not answer a request that requires a visibility check.
+    public static final String REQUEST_CHANNEL = "ArmaPing-VisibleRequest";
+    public static final String RESPONSE_CHANNEL = "ArmaPing-VisibleResponse";
+    private static final String OFFLINE = "offline";
 
     public final CleanPing PLUGIN;
 
@@ -27,64 +32,47 @@ public class RedisListener {
 
         final RedisBungeeAPI redisBungeeAPI = RedisBungeeAPI.getRedisBungeeApi();
 
-        if (event.getChannel().equals("CleanPing-Request")) {
-
-            final String received_message = event.getMessage();
-            final String player_name = received_message.split(";")[0];
-            final UUID player_uuid = UUID.fromString(received_message.split(";")[1]);
-            final String player_server = received_message.split(";")[2];
-            final UUID source = UUID.fromString(received_message.split(";")[3]);
-
-            if (!redisBungeeAPI.getProxyId().equals(player_server)) {
+        if (event.getChannel().equals(REQUEST_CHANNEL)) {
+            final String[] request = event.getMessage().split(";", -1);
+            if (request.length != 4 || !redisBungeeAPI.getProxyId().equals(request[2])) {
                 return;
             }
 
-            if (PLUGIN.getServer().getPlayer(player_uuid).isEmpty()) {
-                return;
-            }
-
-            final Optional<Player> final_player = PLUGIN.getServer().getPlayer(player_uuid);
-
-            if (final_player.isEmpty()) {
-                return;
-            }
-
-            final long ping = final_player.get().getPing();
-
-            final String response_message = player_name + ";" + player_uuid + ";" + redisBungeeAPI.getProxy(player_uuid) + ";" + source + ";" + ping;
-            redisBungeeAPI.sendChannelMessage("CleanPing-Response", response_message);
-
+            final Optional<Player> target = PLUGIN.getServer().getPlayer(UUID.fromString(request[1]))
+                    .filter(PLUGIN.getVanishState()::isVisible);
+            final String result = target.map(player -> Long.toString(player.getPing())).orElse(OFFLINE);
+            redisBungeeAPI.sendChannelMessage(RESPONSE_CHANNEL, request[0] + ";" + request[3] + ";" + result);
         }
 
-        if (event.getChannel().equals("CleanPing-Response")) {
-
-            final String received_message = event.getMessage();
-            final String player_name = received_message.split(";")[0];
-            final String player_server = received_message.split(";")[2];
-            final UUID source = UUID.fromString(received_message.split(";")[3]);
-            final long ping = Long.parseLong(received_message.split(";")[4]);
-
-            if (redisBungeeAPI.getProxyId().equals(player_server)) {
+        if (event.getChannel().equals(RESPONSE_CHANNEL)) {
+            final String[] response = event.getMessage().split(";", -1);
+            if (response.length != 3) {
                 return;
             }
-
-            if (PLUGIN.getServer().getPlayer(source).isEmpty()) {
+            final String playerName = response[0];
+            final Optional<Player> requester = PLUGIN.getServer().getPlayer(UUID.fromString(response[1]));
+            if (!requester.isPresent()) {
                 return;
             }
+            if (OFFLINE.equals(response[2])) {
+                PingCommand.sendNotOnline(requester.get(), playerName);
+                return;
+            }
+            final long ping = Long.parseLong(response[2]);
 
             if (!(VelocityConfig.DYNAMIC_PING.get(Boolean.class))) {
 
-                PLUGIN.getServer().getPlayer(source).get().sendMessage(LegacyComponentSerializer.legacy('§').deserialize(VelocityMessages.OTHERS_PING.color()
+                requester.get().sendMessage(LegacyComponentSerializer.legacy('§').deserialize(VelocityMessages.OTHERS_PING.color()
                         .replace("%prefix%", VelocityMessages.PREFIX.color())
-                        .replace("%user%", player_name)
+                        .replace("%user%", playerName)
                         .replace("%ping%", String.valueOf(ping))));
 
                 return;
 
             }
-            PLUGIN.getServer().getPlayer(source).get().sendMessage(LegacyComponentSerializer.legacy('§').deserialize(VelocityMessages.OTHERS_PING.color()
+            requester.get().sendMessage(LegacyComponentSerializer.legacy('§').deserialize(VelocityMessages.OTHERS_PING.color()
                     .replace("%prefix%", VelocityMessages.PREFIX.color())
-                    .replace("%user%", player_name)
+                    .replace("%user%", playerName)
                     .replace("%ping%", colorBasedOnPing(ping) + ping)));
         }
     }

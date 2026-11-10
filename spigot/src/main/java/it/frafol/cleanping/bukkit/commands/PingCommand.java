@@ -1,6 +1,7 @@
 package it.frafol.cleanping.bukkit.commands;
 
 import it.frafol.cleanping.bukkit.CleanPing;
+import it.frafol.cleanping.bukkit.hooks.VanishBridge;
 import it.frafol.cleanping.bukkit.enums.SpigotConfig;
 import it.frafol.cleanping.bukkit.enums.SpigotMessages;
 import it.frafol.cleanping.bukkit.objects.Placeholder;
@@ -9,7 +10,6 @@ import org.bukkit.command.CommandExecutor;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.Objects;
 
 public class PingCommand implements CommandExecutor {
 
@@ -61,7 +61,8 @@ public class PingCommand implements CommandExecutor {
 				return false;
 			}
 
-			if (plugin.getServer().getPlayer(args[0]) == null) {
+			final Player target = plugin.getServer().getPlayer(args[0]);
+			if (!VanishBridge.isVisible(target)) {
 				source.sendMessage(Placeholder.translate(SpigotMessages.NOT_ONLINE.get(String.class))
 						.replace("%prefix%", Placeholder.translate(SpigotMessages.PREFIX.get(String.class)))
 						.replace("%user%", (args[0])));
@@ -74,7 +75,7 @@ public class PingCommand implements CommandExecutor {
 				return false;
 			}
 
-			final long ping = Objects.requireNonNull(plugin.getServer().getPlayer(args[0])).getPing();
+			final long ping = target.getPing();
 
 			if (!(SpigotConfig.DYNAMIC_PING.get(Boolean.class))) {
 				source.sendMessage(Placeholder.translate(SpigotMessages.OTHERS_PING.get(String.class))
@@ -97,17 +98,19 @@ public class PingCommand implements CommandExecutor {
 				return false;
 			}
 
-			if (plugin.getServer().getPlayer(args[0]) == null) {
+			final Player target = plugin.getServer().getPlayer(args[0]);
+			if (!VanishBridge.isVisible(target)) {
 				source.sendMessage(Placeholder.translate(SpigotMessages.NOT_ONLINE.get(String.class))
 						.replace("%prefix%", Placeholder.translate(SpigotMessages.PREFIX.get(String.class)))
 						.replace("%user%", (args[0])));
 				return false;
 			}
 
-			if (plugin.getServer().getPlayer(args[1]) == null) {
+			final Player secondTarget = plugin.getServer().getPlayer(args[1]);
+			if (!VanishBridge.isVisible(secondTarget)) {
 				source.sendMessage(Placeholder.translate(SpigotMessages.NOT_ONLINE.get(String.class))
 						.replace("%prefix%", Placeholder.translate(SpigotMessages.PREFIX.get(String.class)))
-						.replace("%user%", (args[0])));
+						.replace("%user%", (args[1])));
 				return false;
 			}
 
@@ -117,8 +120,8 @@ public class PingCommand implements CommandExecutor {
 				return false;
 			}
 
-			final long ping1 = Objects.requireNonNull(plugin.getServer().getPlayer(args[0])).getPing();
-			final long ping2 = Objects.requireNonNull(plugin.getServer().getPlayer(args[1])).getPing();
+			final long ping1 = target.getPing();
+			final long ping2 = secondTarget.getPing();
 			final long difference = getDifference(ping1, ping2);
 
 			source.sendMessage(Placeholder.translate(SpigotMessages.PING_DIFFERENCE.get(String.class))

@@ -69,11 +69,11 @@ public class PlaceholderHook extends PlaceholderExpansion {
                 return "";
             }
 
-            if (placeholder.equalsIgnoreCase("ping_" + players.getName())) {
+            if (!VanishBridge.isVisible(players)) {
+                continue;
+            }
 
-                if (!players.isOnline()) {
-                    return "";
-                }
+            if (placeholder.equalsIgnoreCase("ping_" + players.getName())) {
 
                 if (CleanPing.hasGetPingMethod()) {
                     return players.getPing() + "";
@@ -84,10 +84,6 @@ public class PlaceholderHook extends PlaceholderExpansion {
 
             if (placeholder.equalsIgnoreCase("coloured_ping_" + players.getName())) {
 
-                if (!players.isOnline()) {
-                    return "";
-                }
-
                 if (CleanPing.hasGetPingMethod()) {
                     return colorBasedOnPing(players.getPing()) + players.getPing();
                 }
@@ -97,10 +93,6 @@ public class PlaceholderHook extends PlaceholderExpansion {
 
             if (placeholder.equalsIgnoreCase("difference_" + players.getName())) {
 
-                if (!players.isOnline()) {
-                    return "";
-                }
-
                 if (CleanPing.hasGetPingMethod()) {
                     return getDifference(players.getPing(), player.getPlayer().getPing()) + "";
                 }
@@ -109,12 +101,11 @@ public class PlaceholderHook extends PlaceholderExpansion {
             }
 
             for (Player players2 : plugin.getServer().getOnlinePlayers()) {
+                if (!VanishBridge.isVisible(players2)) {
+                    continue;
+                }
 
                 if (placeholder.equalsIgnoreCase("difference_" + players.getName() + "_" + players2.getName())) {
-
-                    if (!players.isOnline() || !players2.isOnline()) {
-                        return "";
-                    }
 
                     if (CleanPing.hasGetPingMethod()) {
                         return getDifference(players.getPing(), players2.getPing()) + "";
