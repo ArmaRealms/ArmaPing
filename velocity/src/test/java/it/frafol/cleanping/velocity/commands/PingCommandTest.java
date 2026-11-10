@@ -1,6 +1,7 @@
 package it.frafol.cleanping.velocity.commands;
 
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.velocitypowered.api.command.BrigadierCommand;
 import com.velocitypowered.api.command.CommandMeta;
 import com.velocitypowered.api.command.CommandSource;
@@ -8,6 +9,7 @@ import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.ProxyServer;
 import it.frafol.cleanping.velocity.CleanPing;
 import it.frafol.cleanping.velocity.hooks.VanishState;
+import net.kyori.adventure.text.Component;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.MockedStatic;
@@ -41,6 +43,9 @@ public class PingCommandTest {
             messages.set("messages." + key, key + " %user% %arg1% %arg2% %ping%");
         }
         when(plugin.getMessagesTextFile().getConfig()).thenReturn(messages);
+        YamlFile redis = new YamlFile();
+        redis.set("redis.enabled", false);
+        when(plugin.getRedisTextFile().getConfig()).thenReturn(redis);
         when(source.hasPermission(anyString())).thenReturn(true);
         Player bedrock = mock(Player.class);
         Player java = mock(Player.class);
@@ -84,6 +89,37 @@ public class PingCommandTest {
             assertEquals(0, dispatcher.execute("cleanping JavaPlayer *Bedrock", source));
             assertTrue(dispatcher.getCompletionSuggestions(dispatcher.parse("cleanping *", source)).get().isEmpty());
             verify(bedrock, never()).getPing();
+            assertEquals(0, dispatcher.execute("cleanping *Bedrock JavaPlayer", source));
+            assertTrue(dispatcher.getCompletionSuggestions(dispatcher.parse("cleanping JavaPlayer *B", source)).get().isEmpty());
+            verify(bedrock, never()).getPing();
+            when(visibility.isVisible(bedrock)).thenReturn(true);
+            when(proxy.getPlayer("*Missing")).thenReturn(Optional.empty());
+            assertEquals(0, dispatcher.execute("cleanping *Missing", source));
+            assertEquals(0, dispatcher.execute("cleanping JavaPlayer *Missing", source));
+            when(source.hasPermission("others")).thenReturn(false);
+            clearInvocations(proxy, bedrock, java);
+            assertThrows(CommandSyntaxException.class, () -> dispatcher.execute("cleanping *Bedrock", source));
+            assertThrows(CommandSyntaxException.class, () -> dispatcher.execute("cleanping JavaPlayer *Bedrock", source));
+            verify(proxy, never()).getPlayer(anyString());
+            when(source.hasPermission("others")).thenReturn(true);
+            when(source.hasPermission("compare")).thenReturn(false);
+            assertEquals(1, dispatcher.execute("cleanping *Bedrock", source));
+            when(source.hasPermission("compare")).thenReturn(true);
+            config.set("settings.others_ping_enabled", false);
+            config.set("settings.difference_ping_enabled", false);
+            clearInvocations(bedrock, java);
+            assertEquals(1, dispatcher.execute("cleanping *Bedrock", source));
+            assertEquals(1, dispatcher.execute("cleanping *Bedrock JavaPlayer", source));
+            verify(bedrock, never()).getPing();
+            verify(java, never()).getPing();
+            config.set("settings.others_ping_enabled", true);
+            config.set("settings.difference_ping_enabled", true);
+            clearInvocations(source);
+            dispatcher.execute("cleanping *Bedrock", source);
+            verify(source).sendMessage(Component.text("others_ping *Bedrock %arg1% %arg2% 42"));
+            clearInvocations(source);
+            dispatcher.execute("cleanping JavaPlayer *Bedrock", source);
+            verify(source).sendMessage(Component.text("difference_ping %user% JavaPlayer *Bedrock 32"));
         }
     }
 }
