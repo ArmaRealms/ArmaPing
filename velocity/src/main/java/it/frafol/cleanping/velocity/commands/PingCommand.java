@@ -61,12 +61,29 @@ public final class PingCommand  {
                             ));
                     return Command.SINGLE_SUCCESS;
                 })
-                .then(RequiredArgumentBuilder.<CommandSource, String>argument("player1", StringArgumentType.word())
+                .then(RequiredArgumentBuilder.<CommandSource, String>argument("players", StringArgumentType.greedyString())
                         .requires(src -> src.hasPermission(VelocityConfig.PING_OTHERS_PERMISSION.get(String.class)))
-                        .suggests((ctx, builder) -> suggestPlayers(proxyServer, vanishState, builder))
+                        .suggests((ctx, builder) -> suggestPlayers(proxyServer, vanishState, ctx.getSource(), builder))
                         .executes(ctx -> {
 
-                            final String argument = StringArgumentType.getString(ctx, "player1");
+                            // word() rejects the '*' prefix used by Bedrock players.
+                            final String[] names = StringArgumentType.getString(ctx, "players").trim().split(" +");
+                            if (names[0].isEmpty() || names.length > 2) {
+                                ctx.getSource().sendMessage(LegacyComponentSerializer.legacySection()
+                                        .deserialize(VelocityMessages.USAGE.color()
+                                                .replace("%prefix%", VelocityMessages.PREFIX.color())));
+                                return 0;
+                            }
+                            if (names.length == 2) {
+                                if (!ctx.getSource().hasPermission(VelocityConfig.DIFFERENCE_PING_PERMISSION.get(String.class))) {
+                                    ctx.getSource().sendMessage(LegacyComponentSerializer.legacySection()
+                                            .deserialize(VelocityMessages.NO_PERMISSION.color()
+                                                    .replace("%prefix%", VelocityMessages.PREFIX.color())));
+                                    return 0;
+                                }
+                                return comparePlayers(proxyServer, vanishState, ctx.getSource(), names[0], names[1]);
+                            }
+                            final String argument = names[0];
 
                             final Optional<Player> localTarget = proxyServer.getPlayer(argument);
                             if (localTarget.isPresent() && !vanishState.isVisible(localTarget.get())) {
@@ -127,65 +144,69 @@ public final class PingCommand  {
                             }
 
                             return Command.SINGLE_SUCCESS;
-                        })
-                        .then(RequiredArgumentBuilder.<CommandSource, String>argument("player2", StringArgumentType.word())
-                                .requires(src -> src.hasPermission(VelocityConfig.DIFFERENCE_PING_PERMISSION.get(String.class)))
-                                .suggests((ctx, builder) -> suggestPlayers(proxyServer, vanishState, builder))
-                                .executes(ctx -> {
-
-                                    final String argument = StringArgumentType.getString(ctx, "player1");
-                                    final String argument2 = StringArgumentType.getString(ctx, "player2");
-
-                                    final Optional<Player> optionalTarget = proxyServer.getPlayer(argument).filter(vanishState::isVisible);
-                                    final Optional<Player> optionalTarget2 = proxyServer.getPlayer(argument2).filter(vanishState::isVisible);
-
-                                    if (optionalTarget.isPresent() && optionalTarget2.isPresent()) {
-
-                                        final Player target = optionalTarget.get();
-                                        final Player target2 = optionalTarget2.get();
-
-                                        if (!(VelocityConfig.DIFFERENCE_PING_OPTION.get(Boolean.class))) {
-                                            ctx.getSource().sendMessage(LegacyComponentSerializer.legacySection()
-                                                    .deserialize(VelocityMessages.USAGE.color()
-                                                            .replace("%prefix%", VelocityMessages.PREFIX.color())
-                                                    ));
-
-                                            return Command.SINGLE_SUCCESS;
-                                        }
-
-                                        final long ping = target.getPing();
-                                        final long ping2 = target2.getPing();
-                                        final long difference = getDifference(ping, ping2);
-
-                                        ctx.getSource().sendMessage(LegacyComponentSerializer.legacySection()
-                                                .deserialize(VelocityMessages.PING_DIFFERENCE.color()
-                                                        .replace("%prefix%", VelocityMessages.PREFIX.color())
-                                                        .replace("%arg1%", argument)
-                                                        .replace("%arg2%", argument2)
-                                                        .replace("%ping%", Long.toString(difference))
-                                                        .replace("%difference%", Long.toString(difference))
-                                                ));
-
-                                    } else {
-                                        return sendNotOnline(ctx.getSource(), optionalTarget.isPresent() ? argument2 : argument);
-                                    }
-
-                                    return Command.SINGLE_SUCCESS;
-                                })
-                        )).build();
+                        })).build();
         final BrigadierCommand command = new BrigadierCommand(node);
         final CommandMeta meta = proxyServer.getCommandManager().metaBuilder(command)
                 .aliases("ping").plugin(plugin).build();
         proxyServer.getCommandManager().register(meta, command);
 	}
 
+    private static int comparePlayers(ProxyServer proxyServer, VanishState vanishState,
+                                      CommandSource source, String argument, String argument2) {
+        final Optional<Player> optionalTarget = proxyServer.getPlayer(argument).filter(vanishState::isVisible);
+        final Optional<Player> optionalTarget2 = proxyServer.getPlayer(argument2).filter(vanishState::isVisible);
+
+        if (optionalTarget.isPresent() && optionalTarget2.isPresent()) {
+
+            final Player target = optionalTarget.get();
+            final Player target2 = optionalTarget2.get();
+
+            if (!(VelocityConfig.DIFFERENCE_PING_OPTION.get(Boolean.class))) {
+                source.sendMessage(LegacyComponentSerializer.legacySection()
+                        .deserialize(VelocityMessages.USAGE.color()
+                                .replace("%prefix%", VelocityMessages.PREFIX.color())
+                        ));
+
+                return Command.SINGLE_SUCCESS;
+            }
+
+            final long ping = target.getPing();
+            final long ping2 = target2.getPing();
+            final long difference = getDifference(ping, ping2);
+
+            source.sendMessage(LegacyComponentSerializer.legacySection()
+                    .deserialize(VelocityMessages.PING_DIFFERENCE.color()
+                            .replace("%prefix%", VelocityMessages.PREFIX.color())
+                            .replace("%arg1%", argument)
+                            .replace("%arg2%", argument2)
+                            .replace("%ping%", Long.toString(difference))
+                            .replace("%difference%", Long.toString(difference))
+                    ));
+
+        } else {
+            return sendNotOnline(source, optionalTarget.isPresent() ? argument2 : argument);
+        }
+
+        return Command.SINGLE_SUCCESS;
+    }
+
     private static CompletableFuture<Suggestions> suggestPlayers(
-            ProxyServer proxyServer, VanishState vanishState, SuggestionsBuilder builder) {
+            ProxyServer proxyServer, VanishState vanishState, CommandSource source, SuggestionsBuilder builder) {
+        String remaining = builder.getRemaining();
+        int separator = remaining.lastIndexOf(' ');
+        if (separator >= 0) {
+            if (remaining.substring(0, separator).trim().contains(" ")
+                    || !source.hasPermission(VelocityConfig.DIFFERENCE_PING_PERMISSION.get(String.class))) {
+                return builder.buildFuture();
+            }
+            builder = builder.createOffset(builder.getStart() + separator + 1);
+        }
+        final SuggestionsBuilder targetBuilder = builder;
         proxyServer.getAllPlayers().stream()
                 .filter(vanishState::isVisible)
                 .map(Player::getUsername)
-                .filter(name -> name.toLowerCase(Locale.ROOT).startsWith(builder.getRemainingLowerCase()))
-                .forEach(builder::suggest);
+                .filter(name -> name.toLowerCase(Locale.ROOT).startsWith(targetBuilder.getRemainingLowerCase()))
+                .forEach(targetBuilder::suggest);
         return builder.buildFuture();
     }
 

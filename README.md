@@ -28,6 +28,10 @@ Clean Ping is a basic /ping plugin, compatible with BungeeCord, Spigot and Veloc
 » /pingreload • Reloads the plugin.
 ```
 
+## Bedrock player names
+
+Use the complete nickname, including its `*` prefix, without quotes: `/ping *Player` or `/ping JavaPlayer *BedrockPlayer`. Both arguments support name suggestions and keep the same vanish and permission checks.
+
 ## Essentials vanish
 
 On Paper and Velocity, vanished players are excluded from both name suggestions and ping lookups, including comparisons. Named PlaceholderAPI lookups on Paper also treat vanished players as absent. Players can still check their own latency with `/ping`.
